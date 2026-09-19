@@ -292,7 +292,10 @@ class Merge(Fold):
         if op is None:
             op = 'update'
         if isinstance(op, basestring):
-            op = getattr(init, op, None)
+            if isinstance(init, type):
+                op = getattr(init, op, None)
+            else:
+                op = getattr(type(init()), op, None)
         if not callable(op):
             raise ValueError('expected callable "op" arg or an "init" with an .update()'
                              ' method not %r and %r' % (op, init))

@@ -705,7 +705,8 @@ def _handle_dict(target, spec, scope):
         else:
             raise MatchError("key {0!r} didn't match any of {1!r}", key, spec_keys)
     for key in defaults:
-        result[key] = arg_val(target, defaults[key], scope)
+        if key not in result:
+            result[key] = arg_val(target, defaults[key], scope)
     if required:
         raise MatchError("target missing expected keys: {0}", ', '.join([bbrepr(r) for r in required]))
     return result

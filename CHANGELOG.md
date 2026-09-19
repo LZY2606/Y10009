@@ -12,6 +12,61 @@ The glom team's approach to updates can be summed up as:
 Check this page when upgrading, we strive to keep the updates
 summarized and well-linked.
 
+## Unreleased
+
+_(September 19, 2026)_
+
+Bugfix release addressing three reported integration issues.
+Regression coverage for all three lives in `glom/test/test_regression.py`.
+
+### Fix: `Coalesce` default given as a spec was returned unevaluated
+
+- **Root cause**: `Coalesce.glomit()` returned `self.default` verbatim
+  when no subspec matched, so a spec object like `T['defaults']['timeout']`
+  came back as the result instead of the value it points at.
+- **Path**: `glom()` -> `Glomer.glom()` -> `Coalesce.glomit()` ->
+  fallback branch now calls `arg_val(target, self.default, scope)`
+  (glom/core.py), the same evaluator used for `Check`/`Match` defaults,
+  so specs are resolved against the target while plain literal defaults
+  (strings, numbers, sentinels) are still returned as-is.
+- **Why the existing 202 tests missed it**: every pre-existing
+  `Coalesce(default=...)` test used literal defaults (`'zzz'`, `0`,
+  `SKIP`), which behave identically whether or not the default is
+  evaluated; no test ever passed a glom spec (e.g. a `T` object) as
+  `default`.
+
+### Fix: `Match` with `Optional(key, default=...)` clobbered present values
+
+- **Root cause**: `_handle_dict()` applied `Optional` defaults in a
+  final loop that unconditionally assigned `result[key] = default`,
+  overwriting values that had already been matched from the target.
+- **Path**: `glom()` -> `Glomer.glom()` -> `Match.glomit()` ->
+  `_glom_match()` -> `_handle_dict()` (glom/matching.py); the defaults
+  loop now only fills in keys still missing from `result`
+  (`if key not in result`).
+- **Why the existing 202 tests missed it**: existing
+  `Optional(..., default=...)` coverage only exercised targets where
+  the key was absent (the default-filled path); no test supplied a
+  target where the optional key was present and valid, so the
+  overwrite was never observed.
+
+### Fix: `Merge`/`merge()` rejected factory callables for `init`
+
+- **Root cause**: `Merge.__init__()` resolved a string `op`
+  (default `'update'`) via `getattr(init, op, None)`. When `init` is a
+  factory function (e.g. `lambda: Bag()`) rather than a type, the
+  lookup found nothing and construction raised `ValueError`, even
+  though the instances produced by the factory have `.update()`.
+- **Path**: `Merge(...)` / `merge(target, init=...)` ->
+  `Merge.__init__()` (glom/reduction.py); when `init` is not a type,
+  `op` is now resolved from `type(init())`, i.e. the class of the
+  accumulator instance the factory produces, keeping the unbound
+  method signature `op(acc, value)` used by `Merge._fold()`.
+- **Why the existing 202 tests missed it**: all pre-existing `Merge`
+  and `merge()` tests passed types (`dict`, or nothing at all) as
+  `init`; the documented "type or callable" contract for factory
+  callables had no coverage.
+
 ## 25.12.0
 
 _(December 28, 2025)_

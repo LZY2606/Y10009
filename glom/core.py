@@ -932,7 +932,7 @@ class Coalesce:
                 continue
         else:
             if self.default is not _MISSING:
-                ret = self.default
+                ret = arg_val(target, self.default, scope)
             elif self.default_factory is not _MISSING:
                 ret = self.default_factory()
             else:
