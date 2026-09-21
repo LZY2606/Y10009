@@ -12,6 +12,26 @@ The glom team's approach to updates can be summed up as:
 Check this page when upgrading, we strive to keep the updates
 summarized and well-linked.
 
+## Unreleased
+
+### Coalesce
+
+- 根因：`Coalesce.glomit()` 在所有回退路径都未命中时直接返回 `self.default`，没有像其他支持 `default` 的规格类型一样通过 `arg_val()` 对参数做保守求值。因此 `T[...]` 这样的目标引用以 `TType` 对象本身返回，而不是在当前 target 上解析出值；字面量和 `default_factory` 不受影响。
+- 调用链：公开入口 `glom()` → `_glom()` → `Coalesce.glomit()` → 修复后的 `arg_val()` → `scope[glom]()` / `_t_eval()` 解析 `T['defaults']['timeout']`。
+- 旧测试盲区：既有 202 条测试只覆盖了 `Coalesce` 的字面量 `default` 和 `default_factory`，没有把引用 target 的 `TType` 规格作为 `default` 传入，所以无法发现默认值分支缺少一次规格求值。
+
+### Match / Optional
+
+- 根因：`_handle_dict()` 先为带 `default` 的 `Optional` 键建立 `defaults`，处理 target 后又无条件遍历 `defaults` 写回结果。字段存在并已在 target 循环中校验、放入 `result` 时，仍会被同一个默认值覆盖。
+- 调用链：公开入口 `glom()` → `_glom()` → `Match.glomit()`（切换到 `_glom_match`）→ `_glom_match()` → `_handle_dict()`；target 字段先经值规格校验并写入 `result`，随后在默认值循环中被错误覆盖，修复后只在键缺失时调用 `arg_val()` 补默认值。
+- 旧测试盲区：既有文档和测试覆盖了可选字段缺失时得到默认值，也有结构校验成功即不抛异常的场景，但没有断言“字段存在且类型正确时用户值必须保留”，因此默认值覆盖成功校验结果的情况未被发现。
+
+### Merge
+
+- 根因：`Merge.__init__()` 对字符串形式的 `op` 使用 `getattr(init, op_name)` 查找方法。`init=dict` 或 `init=OMD` 这类类型对象自身带有未绑定的 `update`，但 `init=lambda: Bag()` 是工厂函数，函数对象本身没有 `update`；真正拥有 `update` 的是工厂调用后返回的 `Bag` 实例。
+- 调用链：公开入口 `Merge()` 或 `merge()` → `Merge.__init__()`（`merge()` 还会先转发到这里）→ `Fold.__init__()`；运行时 `glom()` → `_glom()` → `Fold.glomit()` → `Fold._fold()` 或 `Fold._agg()` 调用 `init()` 创建累加器并执行合并。修复后，工厂形式的字符串方法名会在实际累加器上解析；类型形式仍在构造期通过类型上的未绑定方法校验。
+- 旧测试盲区：既有 `Merge` 自定义容器测试只使用 `dict`、`OMD`、`list` 等类型对象作为 `init`；`Fold`/`Sum` 虽测试了 lambda 工厂，但默认二元操作不是从实例按方法名解析，`merge()` 函数入口也只测试了默认 `dict`。因此没有覆盖“工厂返回带 `update()` 的映射子类”这一组合。
+
 ## 25.12.0
 
 _(December 28, 2025)_

@@ -289,13 +289,25 @@ class Merge(Fold):
 
     """
     def __init__(self, subspec=T, init=dict, op=None):
+        op_name = 'update'
         if op is None:
             op = 'update'
         if isinstance(op, basestring):
-            op = getattr(init, op, None)
+            op_name = op
+            if isinstance(init, type):
+                op = getattr(init, op_name, None)
+            else:
+                def op(acc, value):
+                    method = getattr(acc, op_name, None)
+                    if not callable(method):
+                        raise ValueError('expected callable "op" arg or an "init" with an .%s()'
+                                         ' method not %r and %r'
+                                         % (op_name, method, init))
+                    return method(value)
         if not callable(op):
-            raise ValueError('expected callable "op" arg or an "init" with an .update()'
-                             ' method not %r and %r' % (op, init))
+            raise ValueError('expected callable "op" arg or an "init" with an .%s()'
+                             ' method not %r and %r'
+                             % (op_name if isinstance(op, basestring) else 'update', op, init))
         super().__init__(subspec=subspec, init=init, op=op)
 
     def _fold(self, iterator):
